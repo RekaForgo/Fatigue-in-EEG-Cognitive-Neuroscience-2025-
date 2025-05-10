@@ -1,0 +1,1140 @@
+---
+title: "H2Neuro"
+author: "Clara Holst"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+Variables:
+  "X",
+  "duration_frames",
+  "scan.day",
+  "pause_trigger_t",
+  "session",
+  "pause_trigger",
+  "offset_word",
+  "rt",
+  "img",
+  "no",
+  "onset_img",
+  "word_label",
+  "response",
+  "correct_resp",
+  "word_score_pc",
+  "delay_frames_before",
+  "word_score_warriner",
+  "duration_measured_word",
+  "ID",
+  "condition",
+  "word",
+  "duration_measured_img",
+  "key_t",
+  "gender",
+  "onset_word",
+  "img_trigger",
+  "offset_img",
+  "word_trigger",
+  "age",
+  "delay_frames_after"
+
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+
+# Define the path to the folder containing CSV files
+folder_path <- "D:/UNI/4th Semester/Cognitive Neuroscience/logfiles"
+
+# List all CSV files in the folder
+csv_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
+
+# Load all CSV files into a list of data frames
+data_list <- lapply(csv_files, read.csv)
+
+# Get the union of all column names
+all_columns <- unique(unlist(lapply(data_list, names)))
+
+# Standardize columns and their types in each data frame
+data_list <- lapply(data_list, function(df) {
+  df[setdiff(all_columns, names(df))] <- NA
+  df <- df[all_columns]
+  df[] <- lapply(df, as.character)  # Convert all columns to character type
+  df
+})
+
+# Combine all data frames into one data frame
+combined_data <- bind_rows(data_list)
+
+# View the combined data frame (just to check)
+head(combined_data)
+
+# Survey data frame
+survey_data <- data.frame(
+  gender = c("Female", "Female", "Female", "Female", "Male", "Female", "Female", "Male", "Female", "Male"),
+  age = c(21, 19, 23, 22, 28, 24, 35, 20, 20, 23),
+  study_group = c(9, 2, 11, 6, 0, 4, 3, 15, 5, 20),
+  rec_group = c(20, 0, 18, 19, 2, 6, 1, 10, 9, 5),
+  productive_time = c("Morning (8-11)", "Evening (14-18)", "Morning (8-11)", "Morning (8-11)", "Morning (8-11)",
+                      "Morning (8-11)", "Evening (14-18)", "Evening (14-18)", "Middle of the day (11-14)", "Middle of the day (11-14)"),
+  food_intake = c("Yes", "Yes", "No", "Yes", "Maybe", "Yes", "No", "Yes", "Yes", "Maybe"),
+  wakeup_time = c("6:30:00", "7:00:00", "5:50:00", "6:30:00", "6:30:00", "6:45:00", "6:40:00", "8:00:00", "7:00:00", "9:30:00"),
+  sleep_hours = c(7, 4, 6, 6, 7, 8, 7, 8.5, 7, 7),
+  stress_level = c(6, 8, 6, 7, 7, 3, 9, 3, 3, 3),
+  boredom_trial1 = c(2, 4, 3, 2, 2, 3, 3, 2, 2, 4),
+  boredom_trial2 = c(4, 4, 4, 3, 2, 3, 4, 3, 3, 4),
+  boredom_trial3 = c(5, 5, 5, 4, 2, 5, 5, 3, 3, 5),
+  eeg_session = c("Thursday 8-11", "Tuesday 8-11", "Thursday 11-14", "Thursday 8-11", "Tuesday 14-17",
+                  "Wednesday 9-12", "Tuesday 8-11", "Wednesday 12-15", "Wednesday 9-12", "Tuesday 11-14"),
+  tod = c("Morning", "Morning", "Middle of the day", "Morning", "Afternoon",
+          "Morning", "Morning", "Middle of the day", "Morning", "Middle of the day"),
+  stringsAsFactors = FALSE
+)
+
+# Ensure all IDs in combined_data start with "group"
+combined_data <- combined_data %>%
+  mutate(ID = ifelse(grepl("^group", ID), ID, paste0("group", ID)))
+
+# Convert rec_group to match the format of IDs in combined_data
+survey_data <- survey_data %>%
+  mutate(ID = paste0("group", rec_group))
+
+# Now perform the left join using the corrected ID
+combined_data <- left_join(combined_data, survey_data, by = "ID")
+
+# Check if the merging is successful and if any NAs remain
+head(combined_data)
+
+# Save combined_data to your desired location
+#write.csv(combined_data, file = "D:/UNI/4th Semester/Cognitive #Neuroscience/combined_data.csv", row.names = FALSE)
+
+```
+```{r}
+
+# Load the CSV file
+data <- read.csv("combined_data.csv")
+
+# Get unique IDs
+unique_ids <- unique(data$ID)
+
+# Print unique IDs
+print(unique_ids)
+
+# Count unique IDs
+num_unique_ids <- length(unique_ids)
+print(paste("Number of unique participants:", num_unique_ids))
+```
+
+```{r}
+# Convert relevant columns to appropriate data types
+combined_data <- combined_data %>%
+  mutate(
+    rt = as.numeric(rt),
+    correct_resp = as.numeric(correct_resp),
+    X = as.numeric(X),  # trial number
+    scan.day = as.factor(scan.day),
+    condition = as.factor(condition),
+    word_label = as.factor(word_label)  # Make sure word_label is a factor
+  )
+
+# Check the structure and levels of the word_label column
+str(combined_data$word_label)
+table(combined_data$word_label)
+
+# Filter for the three conditions: Neutral, Positive, and Negative
+neutral_data <- combined_data %>% filter(word_label == "neu")
+positive_data <- combined_data %>% filter(word_label == "pos")
+negative_data <- combined_data %>% filter(word_label == "neg")
+```
+
+```{r}
+# Calculate general average reaction time (RT) and accuracy
+general_stats <- combined_data %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    sd_rt = sd(rt, na.rm = TRUE),
+    mean_accuracy = mean(correct_resp, na.rm = TRUE),
+    sd_accuracy = sd(correct_resp, na.rm = TRUE)
+  )
+
+# Print the results
+print(general_stats)
+```
+
+```{r}
+# Plot: RT and Accuracy over Trials ---
+ggplot(neutral_data, aes(x = X, y = rt)) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Reaction Time Over Trials (Neutral Primes)", x = "Trial", y = "RT (ms)")
+
+ggplot(neutral_data, aes(x = X, y = correct_resp)) +
+  geom_smooth(method = "lm", color = "green") +
+  labs(title = "Accuracy Over Trials (Neutral Primes)", x = "Trial", y = "Accuracy")
+```
+
+```{r}
+# Verify the levels and unique values of word_label
+table(combined_data$word_label)
+
+# Filter data for each condition: Neutral, Positive, and Negative
+neutral_data <- combined_data %>% filter(word_label == "neu")
+positive_data <- combined_data %>% filter(word_label == "pos")
+negative_data <- combined_data %>% filter(word_label == "neg")
+
+# Plot: Reaction Time Over Trials by Condition
+ggplot() +
+  geom_smooth(data = neutral_data, aes(x = X, y = rt, color = "Neutral"), method = "lm") +
+  geom_smooth(data = positive_data, aes(x = X, y = rt, color = "Positive"), method = "lm") +
+  geom_smooth(data = negative_data, aes(x = X, y = rt, color = "Negative"), method = "lm") +
+  labs(title = "Reaction Time Over Trials by Word Condition", 
+       x = "Trial", 
+       y = "Reaction Time (ms)") +
+  scale_color_manual(values = c("Neutral" = "blue", "Positive" = "green", "Negative" = "red")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+# Plot: Accuracy Over Trials by Condition
+ggplot() +
+  geom_smooth(data = neutral_data, aes(x = X, y = correct_resp, color = "Neutral"), method = "lm") +
+  geom_smooth(data = positive_data, aes(x = X, y = correct_resp, color = "Positive"), method = "lm") +
+  geom_smooth(data = negative_data, aes(x = X, y = correct_resp, color = "Negative"), method = "lm") +
+  labs(title = "Accuracy Over Trials by Word Condition", 
+       x = "Trial", 
+       y = "Accuracy") +
+  scale_color_manual(values = c("Neutral" = "blue", "Positive" = "green", "Negative" = "red")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# 1. Reaction Time (RT) Over Trials (X)
+ggplot(combined_data, aes(x = X, y = rt)) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Reaction Time Over Trials", x = "Trial Number", y = "Reaction Time (ms)") +
+  theme_minimal()
+
+# 2. Accuracy Over Trials (X)
+ggplot(combined_data, aes(x = X, y = correct_resp)) +
+  geom_smooth(method = "lm", color = "green") +
+  labs(title = "Accuracy Over Trials", x = "Trial Number", y = "Accuracy") +
+  theme_minimal()
+
+# 3. Reaction Time (RT) by Word Condition
+ggplot(combined_data, aes(x = word_label, y = rt, fill = word_label)) +
+  geom_boxplot() +
+  labs(title = "Reaction Time by Word Condition", x = "Word Condition", y = "Reaction Time (ms)") +
+  theme_minimal()
+
+# 4. Accuracy by Word Condition
+ggplot(combined_data, aes(x = word_label, y = correct_resp, fill = word_label)) +
+  geom_boxplot() +
+  labs(title = "Accuracy by Word Condition", x = "Word Condition", y = "Accuracy") +
+  theme_minimal()
+
+# 5. Reaction Time (RT) by Scan Day
+ggplot(combined_data, aes(x = scan.day, y = rt, fill = scan.day)) +
+  geom_boxplot() +
+  labs(title = "Reaction Time by Scan Day", x = "Scan Day", y = "Reaction Time (ms)") +
+  theme_minimal()
+
+# 6. Accuracy by Scan Day
+ggplot(combined_data, aes(x = scan.day, y = correct_resp, fill = scan.day)) +
+  geom_boxplot() +
+  labs(title = "Accuracy by Scan Day", x = "Scan Day", y = "Accuracy") +
+  theme_minimal()
+
+# 7. Reaction Time (RT) by Session
+ggplot(combined_data, aes(x = session, y = rt, fill = session)) +
+  geom_boxplot() +
+  labs(title = "Reaction Time by Session", x = "Session", y = "Reaction Time (ms)") +
+  theme_minimal()
+
+# 8. Accuracy by Session
+ggplot(combined_data, aes(x = session, y = correct_resp, fill = session)) +
+  geom_boxplot() +
+  labs(title = "Accuracy by Session", x = "Session", y = "Accuracy") +
+  theme_minimal()
+
+# 9. Reaction Time (RT) vs. Word Score (word_score_pc)
+ggplot(combined_data, aes(x = word_score_pc, y = rt)) +
+  geom_point(color = "purple") +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "Reaction Time vs. Word Score", x = "Word Score (PC)", y = "Reaction Time (ms)") +
+  theme_minimal()
+
+# 10. Accuracy vs. Word Score (word_score_pc)
+ggplot(combined_data, aes(x = word_score_pc, y = correct_resp)) +
+  geom_point(color = "orange") +
+  geom_smooth(method = "lm", color = "green") +
+  labs(title = "Accuracy vs. Word Score", x = "Word Score (PC)", y = "Accuracy") +
+  theme_minimal()
+
+```
+
+```{r}
+# stats
+
+# Calculate means and standard deviations for reaction time (rt) and accuracy (correct_resp)
+summary_stats <- combined_data %>%
+  group_by(word_label, scan.day, tod) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    sd_rt = sd(rt, na.rm = TRUE),
+    mean_accuracy = mean(correct_resp, na.rm = TRUE),
+    sd_accuracy = sd(correct_resp, na.rm = TRUE)
+  )
+
+# View summary statistics
+print(summary_stats)
+
+# ANOVA for reaction time by word condition
+anova_rt <- aov(rt ~ word_label, data = combined_data)
+summary(anova_rt)
+
+# ANOVA for accuracy by word condition
+anova_accuracy <- aov(correct_resp ~ word_label, data = combined_data)
+summary(anova_accuracy)
+
+# ANOVA for reaction time by scan day
+anova_scan_day_rt <- aov(rt ~ scan.day, data = combined_data)
+summary(anova_scan_day_rt)
+
+# Load lme4 package
+library(lme4)
+
+# Mixed model for reaction time (rt) by word condition and scan day, accounting for subject (ID)
+mixed_model_rt <- lmer(rt ~ word_label + scan.day + (1 | ID), data = combined_data)
+summary(mixed_model_rt)
+
+# Mixed model with interaction between word_label and scan.day
+mixed_model_interaction <- lmer(rt ~ word_label * scan.day + (1 | ID), data = combined_data)
+summary(mixed_model_interaction)
+
+# Post-hoc Tukey test for ANOVA results on reaction time
+tukey_rt <- TukeyHSD(anova_rt)
+summary(tukey_rt)
+
+```
+
+Interim interpretation:
+The analysis revealed a significant main effect of word label on reaction time, with neutral word primes resulting in a slight but significant increase in reaction time compared to negative primes (Estimate = 0.0109, p = 0.002). This supports the hypothesis that neutral words require greater cognitive effort to process. Additionally, the positive word primes showed a significant decrease in reaction time compared to the neutral primes (Estimate = -0.0164, p = 0.002), suggesting that they may be processed more efficiently. These findings align with the hypothesis that neutral primes, which are more cognitively demanding, are more vulnerable to performance declines due to fatigue, particularly when cognitive capacity is influenced by circadian rhythms.
+
+
+```{r}
+survey_data <- survey_data %>%
+  mutate(tod = case_when(
+    grepl("Morning", tod) ~ "Morning",
+    grepl("Middle|Midday", tod) ~ "Midday",
+    grepl("Afternoon|Evening", tod) ~ "Evening",
+    TRUE ~ tod
+  ))
+
+# time of day circadian rhythm
+# Filter neutral data by time of day
+neutral_morning <- neutral_data %>% filter(tod == "Morning")
+neutral_midday <- neutral_data %>% filter(tod == "Middle of the day")
+neutral_evening <- neutral_data %>% filter(tod == "Afternoon" | tod == "Evening")
+
+# Plot RT by Time of Day for Neutral Primes
+ggplot() +
+  geom_smooth(data = neutral_morning, aes(x = X, y = rt, color = "Morning"), method = "lm") +
+  geom_smooth(data = neutral_midday, aes(x = X, y = rt, color = "Midday"), method = "lm") +
+  geom_smooth(data = neutral_evening, aes(x = X, y = rt, color = "Evening"), method = "lm") +
+  labs(title = "Reaction Time Over Trials for Neutral Primes by Time of Day", 
+       x = "Trial", 
+       y = "Reaction Time (ms)") +
+  scale_color_manual(values = c("Morning" = "blue", "Midday" = "orange", "Evening" = "red")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+# Plot Accuracy by Time of Day for Neutral Primes
+ggplot() +
+  geom_smooth(data = neutral_morning, aes(x = X, y = correct_resp, color = "Morning"), method = "lm") +
+  geom_smooth(data = neutral_midday, aes(x = X, y = correct_resp, color = "Midday"), method = "lm") +
+  geom_smooth(data = neutral_evening, aes(x = X, y = correct_resp, color = "Evening"), method = "lm") +
+  labs(title = "Accuracy Over Trials for Neutral Primes by Time of Day", 
+       x = "Trial", 
+       y = "Accuracy") +
+  scale_color_manual(values = c("Morning" = "blue", "Midday" = "orange", "Evening" = "red")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+```
+
+```{r}
+# Explore interaction between circadian rhythm and performance (RT and accuracy)
+ggplot(neutral_data, aes(x = X, y = rt, color = tod)) +
+  geom_smooth(method = "lm") +
+  labs(title = "Reaction Time for Neutral Primes by Time of Day", 
+       x = "Trial", 
+       y = "Reaction Time (ms)") +
+  scale_color_manual(values = c("Morning" = "blue", "Middle of the day" = "orange", "Afternoon" = "red")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+ggplot(neutral_data, aes(x = X, y = correct_resp, color = tod)) +
+  geom_smooth(method = "lm") +
+  labs(title = "Accuracy for Neutral Primes by Time of Day", 
+       x = "Trial", 
+       y = "Accuracy") +
+  scale_color_manual(values = c("Morning" = "blue", "Middle of the day" = "orange", "Afternoon" = "red")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+
+```
+
+```{r}
+# Explore fatigue-related effects by analyzing the change in RT and accuracy for neutral primes
+ggplot(neutral_data, aes(x = X, y = rt)) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(title = "Fatigue Effect on RT for Neutral Primes", x = "Trial", y = "RT (ms)")
+
+ggplot(neutral_data, aes(x = X, y = correct_resp)) +
+  geom_smooth(method = "lm", color = "green") +
+  labs(title = "Fatigue Effect on Accuracy for Neutral Primes", x = "Trial", y = "Accuracy")
+
+```
+
+```{r}
+
+library(lme4)
+library(lmerTest)  # For p-values
+
+# Full model with interaction between trial (X) and time of day (tod)
+rt_model <- lmer(rt ~ X * tod * word_label + (1 | ID), data = combined_data)
+summary(rt_model)  # Check for significant X:tod or X:word_label interactions
+
+# Simplified model for neutral primes only
+rt_neutral <- lmer(rt ~ X * tod + (1 | ID), data = neutral_data)
+summary(rt_neutral)
+```
+
+```{r}
+# Simplified model with scaled X and optimized settings
+neutral_data$X_scaled <- scale(neutral_data$X)
+accuracy_neutral <- glmer(correct_resp ~ X_scaled * tod + (1 | ID), 
+                          family = binomial, data = neutral_data,
+                          control = glmerControl(optimizer = "bobyqa",
+                                                optCtrl = list(maxfun = 1e5)))
+summary(accuracy_neutral)
+```
+
+```{r}
+library(emmeans)
+
+# Compare slopes of RT over trials (X) by time of day
+rt_slopes <- emtrends(rt_neutral, pairwise ~ tod, var = "X")
+summary(rt_slopes, adjust = "tukey")  # Tukey-adjusted p-values
+```
+
+```{r}
+library(ggplot2)
+
+# Plot RT trends for neutral primes by time of day
+ggplot(neutral_data, aes(x = X, y = rt, color = tod)) +
+  geom_smooth(method = "lm") +
+  labs(title = "RT Trends for Neutral Primes by Time of Day",
+       x = "Trial", y = "Reaction Time (ms)") +
+  theme_minimal()
+
+# Plot accuracy trends
+ggplot(neutral_data, aes(x = X, y = correct_resp, color = tod)) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial")) +
+  labs(title = "Accuracy Trends for Neutral Primes by Time of Day",
+       x = "Trial", y = "Accuracy") +
+  theme_minimal()
+```
+
+```{r}
+# Normality of residuals
+qqnorm(resid(rt_model))
+
+# Homoscedasticity
+plot(fitted(rt_model), resid(rt_model))
+```
+```{r}
+library(lme4)
+library(glmmTMB)
+
+accuracy_model <- glmer(
+  correct_resp ~ X_scaled * tod + (1 | ID) + (0 + X_scaled | ID),
+  family = binomial, 
+  data = neutral_data,
+  control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5))
+)
+summary(accuracy_model)
+plot(accuracy_model)
+qqnorm(resid(accuracy_model))
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Prepare data: Aggregate RT by trial (X), word_label, and time of day (tod)
+plot_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = factor(word_label, 
+                        levels = c("neu", "pos", "neg"),
+                        labels = c("Neutral", "Positive", "Negative"))
+  ) %>%
+  group_by(X, word_label, tod) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  complete(X, word_label, tod, fill = list(mean_rt = NA, se_rt = NA)) %>%
+  drop_na(mean_rt)
+
+
+# Visualization
+ggplot(plot_data, aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), 
+              alpha = 0.2, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE) +
+  facet_wrap(~tod, nrow = 1) +
+  scale_color_manual(
+    values = c("Neutral" = "#1f77b4", "Positive" = "#2ca02c", "Negative" = "#d62728"),
+    aesthetics = c("color", "fill")
+  ) +
+  labs(
+    title = "Reaction Time Trends by Word Type and Time of Day",
+    subtitle = "Neutral words show steeper fatigue effects during low-alertness periods (e.g., Midday/Evening)",
+    x = "Trial Number",
+    y = "Reaction Time (s)",
+    color = "Word Type",
+    fill = "Word Type"
+  ) +
+  ylim(0.3, 0.6) +  # Set RT axis limit
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "gray40"),
+    strip.text = element_text(face = "bold"),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+
+# Prepare data - focus only on Morning for this example
+morning_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = factor(word_label, 
+                       levels = c("neu", "pos", "neg"),
+                       labels = c("Neutral", "Positive", "Negative"))
+  ) %>%
+  filter(tod == "Morning") %>%  # Only Morning data
+  group_by(X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n())
+  ) %>%
+  drop_na()
+
+# Single plot - Morning
+ggplot(morning_data, aes(x = X, y = mean_rt, color = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt, fill = word_label),
+              alpha = 0.15, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE, linewidth = 1.5) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", 
+                                "Positive" = "#2ca02c", 
+                                "Negative" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", 
+                               "Positive" = "#2ca02c", 
+                               "Negative" = "#d62728")) +
+  labs(
+    title = "Morning: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Word Type",
+    fill = "Word Type"
+  ) +
+  coord_cartesian(ylim = c(0.65, 0.8)) +  # Zoom in safely here
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+```{r}
+ggplot(morning_data, aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), alpha = 0.2, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE, linewidth = 1) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", 
+                                "Positive" = "#2ca02c", 
+                                "Negative" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", 
+                               "Positive" = "#2ca02c", 
+                               "Negative" = "#d62728")) +
+  labs(
+    title = "Morning: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Word Type",
+    fill = "Word Type"
+  ) +
+  coord_cartesian(ylim = c(0.1, 1.5)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.major.x = element_blank(),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Prepare data
+morning_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = recode(word_label,
+                        "neu" = "Neutral",
+                        "pos" = "Emotional",
+                        "neg" = "Emotional")
+  ) %>%
+  filter(tod == "Morning") %>%
+  group_by(X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  drop_na()
+
+# Plot 
+ggplot(morning_data, aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt),
+              alpha = 0.2, linetype = "blank") +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Morning: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  coord_cartesian(ylim = c(0.3, 1.5)) +  # Zoomed in y-axis
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Prepare data
+morning_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    # Combine "Positive" and "Negative" into one "Emotional" condition
+    word_label = recode(word_label,
+                        "neu" = "Neutral",
+                        "pos" = "Emotional",
+                        "neg" = "Emotional")
+  ) %>%
+  filter(tod == "Morning") %>%
+  group_by(X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  drop_na()
+
+# Plot with combined "Emotional" condition and smoothing
+ggplot(morning_data, aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt),
+              alpha = 0.2, linetype = "blank") +
+  geom_smooth(method = "loess", span = 0.1, se = FALSE, linewidth = 1) +  # Light smoothing
+  geom_line(linewidth = 1) +  # Optional line for mean reaction time
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Morning: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  coord_cartesian(ylim = c(0.3, 1.5)) +  # Zoomed in y-axis
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Prepare data
+morning_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = recode(word_label,
+                        "neu" = "Neutral",
+                        "pos" = "Emotional",
+                        "neg" = "Emotional")
+  ) %>%
+  filter(tod == "Morning") %>%
+  group_by(X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  drop_na()
+
+# Smoothed plot
+ggplot(morning_data, aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt),
+              alpha = 0.2, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 7), se = FALSE, linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Morning: Smoothed Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  coord_cartesian(ylim = c(0, 2)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+```{r}
+# Prepare Midday data
+midday_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = factor(word_label, 
+                        levels = c("neu", "pos", "neg"),
+                        labels = c("Neutral", "Positive", "Negative"))
+  ) %>%
+  filter(tod == "Midday") %>%
+  group_by(X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n())
+  ) %>%
+  drop_na()
+
+# Plot - Midday
+ggplot(midday_data, aes(x = X, y = mean_rt, color = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt, fill = word_label),
+              alpha = 0.15, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE, linewidth = 1.5) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", 
+                                "Positive" = "#2ca02c", 
+                                "Negative" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", 
+                               "Positive" = "#2ca02c", 
+                               "Negative" = "#d62728")) +
+  labs(
+    title = "Midday: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Word Type",
+    fill = "Word Type"
+  ) +
+  ylim(min(midday_data$mean_rt - midday_data$se_rt), 
+       max(midday_data$mean_rt + midday_data$se_rt)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+```{r}
+# Prepare Evening data
+evening_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = factor(word_label, 
+                        levels = c("neu", "pos", "neg"),
+                        labels = c("Neutral", "Positive", "Negative"))
+  ) %>%
+  filter(tod == "Evening") %>%
+  group_by(X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n())
+  ) %>%
+  drop_na()
+
+# Plot - Evening
+ggplot(evening_data, aes(x = X, y = mean_rt, color = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt, fill = word_label),
+              alpha = 0.15, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE, linewidth = 1.5) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", 
+                                "Positive" = "#2ca02c", 
+                                "Negative" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", 
+                               "Positive" = "#2ca02c", 
+                               "Negative" = "#d62728")) +
+  labs(
+    title = "Evening: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Word Type",
+    fill = "Word Type"
+  ) +
+  ylim(0.5,0.57) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Prepare combined, summarized data
+plot_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = factor(word_label, 
+                        levels = c("neu", "pos", "neg"),
+                        labels = c("Neutral", "Positive", "Negative")),
+    tod = factor(tod, levels = c("Morning", "Midday", "Evening"))
+  ) %>%
+  group_by(tod, X, word_label) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n())
+  ) %>%
+  drop_na()
+
+# Find y-axis limits for consistent scaling
+ymin <- min(plot_data$mean_rt - plot_data$se_rt)
+ymax <- max(plot_data$mean_rt + plot_data$se_rt)
+
+# Combined facetted plot
+# Use the same plot_data as before
+
+ggplot(plot_data, aes(x = X, y = mean_rt, color = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt, fill = word_label),
+              alpha = 0.15, linetype = "blank") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE, linewidth = 1.2) +
+  facet_wrap(~ tod, ncol = 1, scales = "fixed") +  # 1 row per facet
+  scale_color_manual(values = c("Neutral" = "#1f77b4", 
+                                "Positive" = "#2ca02c", 
+                                "Negative" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", 
+                               "Positive" = "#2ca02c", 
+                               "Negative" = "#d62728")) +
+  labs(
+    title = "Reaction Time Trends Across Times of Day",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Word Type",
+    fill = "Word Type"
+  ) +
+  ylim(ymin, ymax) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    strip.text = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 20, 20, 20),
+    aspect.ratio = 0.5  # Makes each facet taller
+  )
+
+```
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+
+# Prepare data for all time periods (Morning, Midday, Evening)
+combined_data <- combined_data %>%
+  filter(word_label %in% c("neu", "pos", "neg")) %>%
+  mutate(
+    tod = case_when(
+      grepl("Morning", tod) ~ "Morning",
+      grepl("Middle|Midday", tod) ~ "Midday",
+      grepl("Afternoon|Evening", tod) ~ "Evening",
+      TRUE ~ tod
+    ),
+    word_label = recode(word_label,
+                        "neu" = "Neutral",
+                        "pos" = "Emotional",
+                        "neg" = "Emotional")
+  ) %>%
+  group_by(X, word_label, tod) %>%
+  summarise(
+    mean_rt = mean(rt, na.rm = TRUE),
+    se_rt = sd(rt, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  drop_na()
+
+# Create individual plots for Morning, Midday, and Evening
+
+# Morning plot with custom ylim
+ggplot(combined_data %>% filter(tod == "Morning"), aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), alpha = 0.2, linetype = "blank") +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Morning: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  coord_cartesian(ylim = c(0.3, 1.5)) +  # Morning specific ylim
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+# Midday plot with custom ylim
+ggplot(combined_data %>% filter(tod == "Midday"), aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), alpha = 0.2, linetype = "blank") +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Midday: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  coord_cartesian(ylim = c(0.3, 0.8)) +  # Midday specific ylim
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+# Evening plot with custom ylim
+ggplot(combined_data %>% filter(tod == "Evening"), aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), alpha = 0.2, linetype = "blank") +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Evening: Reaction Time Trends",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  coord_cartesian(ylim = c(0.3, 0.6)) +  # Evening specific ylim
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+```{r}
+library(lme4)
+
+# Mixed-effects model for reaction time with trial number, word condition, and time of day
+model_rt <- lmer(rt ~ X * word_label * tod + (1 | ID), data = data)
+
+# Summary of the model
+summary(model_rt)
+
+# Post-hoc tests for comparisons
+library(emmeans)
+
+# Post-hoc comparisons for RT by Time of Day and Word Label
+emm_rt <- emmeans(model_rt, ~ tod * word_label)
+summary(emm_rt)
+
+# Pairwise comparisons
+pairs(emm_rt)
+
+# Testing for trial number effect on RT (cognitive decline hypothesis)
+model_trial <- lmer(rt ~ X + (1 | ID), data = data)
+
+# Summary of the model
+summary(model_trial)
+
+
+```
+
+```{r}
+# Combined plot for all time periods
+ggplot(combined_data, aes(x = X, y = mean_rt, color = word_label, fill = word_label)) +
+  geom_ribbon(aes(ymin = mean_rt - se_rt, ymax = mean_rt + se_rt), alpha = 0.2, linetype = "blank") +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  scale_fill_manual(values = c("Neutral" = "#1f77b4", "Emotional" = "#d62728")) +
+  labs(
+    title = "Reaction Time Trends by Time of Day",
+    x = "Trial Number",
+    y = "Reaction Time (ms)",
+    color = "Condition",
+    fill = "Condition"
+  ) +
+  facet_wrap(~tod, scales = "free_y", nrow = 1) +  # Facet by time of day (Morning, Midday, Evening)
+  coord_cartesian(ylim = c(0.3, 1)) +  # Zoomed in y-axis
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.title = element_text(size = 14),
+    legend.position = "bottom",
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    plot.margin = margin(20, 20, 20, 20)
+  )
+
+```
+
+
