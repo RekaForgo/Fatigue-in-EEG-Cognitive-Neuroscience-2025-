@@ -1,0 +1,337 @@
+---
+title: "Epoch stats"
+output: pdf_document
+date: "2025-05-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(ggplot2)
+library(lme4)
+```
+
+
+
+```{r}
+#read in lpp_300-600_PzCzFz.csv
+
+data <- read.csv("~/Downloads/data/lpp_300-600_PzCzFz.csv")
+
+#assign new column, NA everywhere, but where event code is Image/wPos, assign 1, and where event code is Image/wNeg, assign -1, where Image/wNeu/iPos assign 1 and Image/wNeu/iNeg assign -1
+
+#filter lines
+data <- data %>%
+  filter(!grepl("Wait|Correct|Incorrect", Condition))
+
+data$event_code <- NA
+data$event_code[data$Condition == "Image/wPos"] <- 1
+data$event_code[data$Condition == "Image/wNeg"] <- -1
+data$event_code[data$Condition == "Image/wNeu/iPos"] <- 1
+data$event_code[data$Condition == "Image/wNeu/iNeg"] <- -1
+
+#assign 'positive' to where event code is 1 and 'negative' to where event code is -1
+
+data_filtered <- data %>%
+  filter(!is.na(event_code))
+data_filtered$emotion <- NA
+data_filtered$emotion[data_filtered$event_code == 1] <- "positive"
+data_filtered$emotion[data_filtered$event_code == -1] <- "negative"
+
+#add trial number to each row from 1 within subject
+
+data_filtered_n <- data_filtered %>%
+  group_by(Subject) %>%
+  mutate(trial_number = row_number())
+
+#add session count, split at [5:40], [45:80] and [85:120]
+data_filtered_n$session <- NA
+data_filtered_n$session[data_filtered_n$trial_number >= 5 & data_filtered_n$trial_number <= 60] <- 1
+data_filtered_n$session[data_filtered_n$trial_number >= 65 & data_filtered_n$trial_number <= 120] <- 2
+data_filtered_n$session[data_filtered_n$trial_number >= 125 & data_filtered_n$trial_number <= 180] <- 3
+
+#drop NA
+data_filtered_n <- data_filtered_n %>%
+  filter(!is.na(session))
+
+#convert variables to factors
+data_filtered_n$subject <- as.factor(data_filtered_n$Subject)
+data_filtered_n$session <- as.factor(data_filtered_n$session)
+data_filtered_n$emotion <- as.factor(data_filtered_n$emotion)
+data_filtered_n$trial_number <- as.numeric(data_filtered_n$trial_number)
+
+data_filtered_n$LPP_300_600ms <- as.numeric(data_filtered_n$LPP_300_600ms)
+#build model with amplitude (Amplitude ~ Emotion * Trial + (1 + Trial | Subject), data = lpp_data)
+
+model1 <- lmer(LPP_300_600ms ~ session + (1 | subject), data = data_filtered_n)
+summary(model1)
+
+model2 <- lmer(LPP_300_600ms ~ session * emotion + (1 | subject), data = data_filtered_n)
+summary(model2)
+
+anova(model1, model2)
+
+model_new <- lmer(LPP_300_600ms ~ session + (1 | subject) + (1 | emotion), data = data_filtered_n)
+summary(model_new)
+anova(model1, model_new)
+
+
+```
+
+### EPN
+
+```{r}
+
+#read in epn_150-300_PzCzFz.csv
+df_epn <- read.csv("~/Downloads/data/EPN_240_300.csv")
+
+df_epn <- df_epn %>%
+  filter(!grepl("Wait|Correct|Incorrect", Condition))
+
+#filter lines where Condition includes "Image"
+df_epn_filt <- df_epn %>%
+  filter(grepl("Image", Condition))
+
+#assign trials
+
+#add trial number to each row from 1 within subject
+
+df_epn_filt <- df_epn_filt %>%
+  group_by(Subject) %>%
+  mutate(trial_number = row_number())
+
+#add session count, split at [5:40], [45:80] and [85:120]
+df_epn_filt$session <- NA
+df_epn_filt$session[df_epn_filt$trial_number >= 5 & df_epn_filt$trial_number <= 60] <- 1
+df_epn_filt$session[df_epn_filt$trial_number >= 65 & df_epn_filt$trial_number <= 120] <- 2
+df_epn_filt$session[df_epn_filt$trial_number >= 125 & df_epn_filt$trial_number <= 180] <- 3
+
+#drop NA
+df_epn_filt <- df_epn_filt %>%
+  filter(!is.na(session))
+
+
+#convert variables to factors
+df_epn_filt$subject <- as.factor(df_epn_filt$Subject)
+df_epn_filt$session <- as.factor(df_epn_filt$session)
+df_epn_filt$trial_number <- as.numeric(df_epn_filt$trial_number)
+df_epn_filt$EPN_240_300ms <- as.numeric(df_epn_filt$EPN_240_300ms)
+
+model3 <- lmer(EPN_240_300ms ~ session + (1 | subject), data = df_epn_filt)
+summary(model3)
+
+
+```
+
+
+```{r}
+### N400
+
+#Read in N400 data
+df_n400 <- read.csv("~/Downloads/data/N400_300_450ms.csv")
+#filter lines
+df_n400 <- df_n400 %>%
+  filter(!grepl("Wait|Correct|Incorrect", Condition))
+#filter lines where Condition includes "Image"
+df_n400_filt <- df_n400 %>%
+  filter(grepl("Image", Condition))
+#assign trials
+#add trial number to each row from 1 within subject
+df_n400_filt <- df_n400_filt %>%
+  group_by(Subject) %>%
+  mutate(trial_number = row_number())
+#add session count, split at [5:60], [65:120] and [125:]
+df_n400_filt$session <- NA
+df_n400_filt$session[df_n400_filt$trial_number >= 5 & df_n400_filt$trial_number <= 60] <- 1
+df_n400_filt$session[df_n400_filt$trial_number >= 65 & df_n400_filt$trial_number <= 120] <- 2
+df_n400_filt$session[df_n400_filt$trial_number >= 125 & df_n400_filt$trial_number <= 180] <- 3
+
+#drop NA
+df_n400_filt <- df_n400_filt %>%
+  filter(!is.na(session))
+
+#create a new column with valid / neutral. If Image/wNeu is in the Condition then it is neutral, if not then it is valid
+
+df_n400_filt$validity <- NA
+df_n400_filt$validity[df_n400_filt$Condition == "Image/wNeu/iPos"] <- "neutral"
+df_n400_filt$validity[df_n400_filt$Condition == "Image/wPos"] <- "valid"
+df_n400_filt$validity[df_n400_filt$Condition == "Image/wNeu/iNeg"] <- "neutral"
+df_n400_filt$validity[df_n400_filt$Condition == "Image/wNeg"] <- "valid"
+
+
+#convert variables
+df_n400_filt$subject <- as.factor(df_n400_filt$Subject)
+df_n400_filt$session <- as.factor(df_n400_filt$session)
+df_n400_filt$validity <- as.factor(df_n400_filt$validity)
+df_n400_filt$trial_number <- as.numeric(df_n400_filt$trial_number)
+df_n400_filt$N400_300_450ms <- as.numeric(df_n400_filt$N400_300_450ms)
+
+#build model with amplitude (Amplitude ~ Emotion * Trial + (1 + Trial | Subject), data)
+
+model4 <- lmer(N400_300_450ms ~ session*validity + (1 | subject), data = df_n400_filt)
+
+summary(model4)
+
+```
+
+
+-----
+
+
+```{r}
+#read in N1 data
+df_n1 <- read.csv("~/Downloads/data/N1_100_200ms.csv")
+#filter lines
+df_n1 <- df_n1 %>%
+  filter(!grepl("Wait|Correct|Incorrect", Condition))
+#filter lines where Condition includes "Image"
+df_n1_filt <- df_n1 %>%
+  filter(grepl("Image|Word", Condition))
+
+#assign trials
+#add trial number to each row from 1 within subject
+df_n1_filt <- df_n1_filt %>%
+  group_by(Subject) %>%
+  mutate(trial_number = row_number())
+#add session count, split at [5:120], [125:240] and [245:360] 
+df_n1_filt$session <- NA
+df_n1_filt$session[df_n1_filt$trial_number >= 5 & df_n1_filt$trial_number <= 120] <- 1
+df_n1_filt$session[df_n1_filt$trial_number >= 125 & df_n1_filt$trial_number <= 240] <- 2
+df_n1_filt$session[df_n1_filt$trial_number >= 245 & df_n1_filt$trial_number <= 360] <- 3
+#drop NA
+df_n1_filt <- df_n1_filt %>%
+  filter(!is.na(session))
+
+#create column for word or image, where the Condition = Word/wNeu
+df_n1_filt$stimulus <- NA
+df_n1_filt$stimulus[df_n1_filt$Condition == "Word/wNeu"] <- "word"
+df_n1_filt$stimulus[df_n1_filt$Condition == "Image/wNeu/iPos"] <- "image"
+df_n1_filt$stimulus[df_n1_filt$Condition == "Image/wPos"] <- "image"
+df_n1_filt$stimulus[df_n1_filt$Condition == "Image/wNeu/iNeg"] <- "image"
+df_n1_filt$stimulus[df_n1_filt$Condition == "Image/wNeg"] <- "image"
+df_n1_filt$stimulus[df_n1_filt$Condition == "Word/wNeg"] <- "word"
+df_n1_filt$stimulus[df_n1_filt$Condition == "Word/wPos"] <- "word"
+
+
+#convert variables
+df_n1_filt$subject <- as.factor(df_n1_filt$Subject)
+df_n1_filt$session <- as.factor(df_n1_filt$session)
+df_n1_filt$trial_number <- as.numeric(df_n1_filt$trial_number)
+df_n1_filt$N1_100_200ms <- as.numeric(df_n1_filt$N1_100_200ms)
+#build model with amplitude (Amplitude ~ Session + (1|Subject), data)
+
+#filter stimulus to image
+
+df_n1_filt_image <- df_n1_filt %>%
+  filter(stimulus == "image")
+#build model with amplitude (Amplitude ~ Session + (1|Subject), data)
+model7 <- lmer(N1_100_200ms ~ session + (1 | subject), data = df_n1_filt_image)
+summary(model7)
+
+```
+
+
+
+
+```{r}
+#n2b
+
+#read in N2b data
+df_n2b <- read.csv("~/Downloads/data/N2b_200_350ms.csv")
+#filter lines
+df_n2b <- df_n2b %>%
+  filter(!grepl("Wait|Correct|Incorrect", Condition))
+
+#filter lines where Condition includes "Image"
+df_n2b_filt <- df_n2b %>%
+  filter(grepl("Image|Word", Condition))
+#assign trials
+#add trial number to each row from 1 within subject
+df_n2b_filt <- df_n2b_filt %>%
+  group_by(Subject) %>%
+  mutate(trial_number = row_number())
+#add session count, split at [5:120], [125:240] and [245:360]
+df_n2b_filt$session <- NA
+df_n2b_filt$session[df_n2b_filt$trial_number >= 5 & df_n2b_filt$trial_number <= 120] <- 1
+df_n2b_filt$session[df_n2b_filt$trial_number >= 125 & df_n2b_filt$trial_number <= 240] <- 2
+df_n2b_filt$session[df_n2b_filt$trial_number >= 245 & df_n2b_filt$trial_number <= 360] <- 3
+#drop NA
+df_n2b_filt <- df_n2b_filt %>%
+  filter(!is.na(session))
+#create column for word or image, where the Condition = Word/wNeu
+df_n2b_filt$stimulus <- NA
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Word/wNeu"] <- "word"
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Image/wNeu/iPos"] <- "image"
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Image/wPos"] <- "image"
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Image/wNeu/iNeg"] <- "image"
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Image/wNeg"] <- "image"
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Word/wNeg"] <- "word"
+df_n2b_filt$stimulus[df_n2b_filt$Condition == "Word/wPos"] <- "word"
+
+#convert
+df_n2b_filt$subject <- as.factor(df_n2b_filt$Subject)
+df_n2b_filt$session <- as.factor(df_n2b_filt$session)
+df_n2b_filt$trial_number <- as.numeric(df_n2b_filt$trial_number)
+df_n2b_filt$stimulus <- as.factor(df_n2b_filt$stimulus)
+df_n2b_filt$N2b_200_350ms <- as.numeric(df_n2b_filt$N2b_200_350ms)
+#build model with amplitude (Amplitude ~ Session + (1|Subject), data)
+
+model8 <- lmer(N2b_200_350ms ~ session + (1 | subject), data = df_n2b_filt)
+model9 <- lmer(N2b_200_350ms ~ session * stimulus + (1 | subject), data = df_n2b_filt)
+
+anova(model8, model9)
+
+summary(model9)
+
+```
+
+```{r}
+#P300 
+
+#load in the data
+
+df_p300 <- read.csv("~/Downloads/data/P300_250_500ms.csv")
+
+#filter lines
+df_p300 <- df_p300 %>%
+  filter(!grepl("Wait|Correct|Incorrect", Condition))
+#filter lines where Condition includes "Image"
+df_p300_filt <- df_p300 %>%
+  filter(grepl("Image", Condition))
+
+#assign trials
+#add trial number to each row from 1 within subject
+df_p300_filt <- df_p300_filt %>%
+  group_by(Subject) %>%
+  mutate(trial_number = row_number())
+#add session count, split at [5:60], [65:120] and [120:180]
+df_p300_filt$session <- NA
+df_p300_filt$session[df_p300_filt$trial_number >= 5 & df_p300_filt$trial_number <= 60] <- 1
+df_p300_filt$session[df_p300_filt$trial_number >= 65 & df_p300_filt$trial_number <= 120] <- 2
+df_p300_filt$session[df_p300_filt$trial_number >= 125 & df_p300_filt$trial_number <= 180] <- 3
+#drop NA
+df_p300_filt <- df_p300_filt %>%
+  filter(!is.na(session))
+
+#convert variables
+df_p300_filt$subject <- as.factor(df_p300_filt$Subject)
+df_p300_filt$session <- as.factor(df_p300_filt$session)
+df_p300_filt$trial_number <- as.numeric(df_p300_filt$trial_number)
+df_p300_filt$P300_250_500ms <- as.numeric(df_p300_filt$P300_250_500ms)
+
+#build model with amplitude (Amplitude ~ Session + (1|Subject), data)
+
+model10 <- lmer(P300_250_500ms ~ session + (1 | subject), data = df_p300_filt)
+summary(model10)
+
+
+```
+
+
+
+
+
